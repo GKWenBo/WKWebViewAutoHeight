@@ -22,7 +22,7 @@
 @implementation ViewController
 
 - (void)dealloc {
-    [self removeWebViewObserver];
+//    [self removeWebViewObserver];
 }
 #pragma mark ------ < Life Cycle > ------
 #pragma mark
@@ -67,32 +67,33 @@
 #pragma mark
 - (void)setupWebView {
     wkWebViewHeight = 0.f;
-    NSURL *url = [NSURL URLWithString:@"https://www.baidu.com"];
+    NSURL *url = [NSURL URLWithString:@"https://www.jianshu.com/p/22f39afdaa44"];
     NSURLRequest *urlRequest = [NSURLRequest requestWithURL:url];
     [self.wkWebView loadRequest:urlRequest];
-    [self addWebViewObserver];
+//    [self addWebViewObserver];
 }
 
+/** < 方式一 > */
+//- (void)addWebViewObserver {
+//    [self.wkWebView.scrollView addObserver:self forKeyPath:@"contentSize" options:NSKeyValueObservingOptionNew context:nil];
+//}
 
-- (void)addWebViewObserver {
-    [self.wkWebView.scrollView addObserver:self forKeyPath:@"contentSize" options:NSKeyValueObservingOptionNew context:nil];
-}
+//- (void)removeWebViewObserver {
+//    [self.wkWebView.scrollView removeObserver:self forKeyPath:@"contentSize"];
+//}
 
-- (void)removeWebViewObserver {
-    [self.wkWebView.scrollView removeObserver:self forKeyPath:@"contentSize"];
-}
+//#pragma mark ------ < KVO > ------
+//- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
+//    /**  < 法2 >  */
+//    /**  < loading：防止滚动一直刷新，出现闪屏 >  */
+//    if ([keyPath isEqualToString:@"contentSize"]) {
+//        CGRect webFrame = self.wkWebView.frame;
+//        webFrame.size.height = self.wkWebView.scrollView.contentSize.height;
+//        self.wkWebView.frame = webFrame;
+//        [self.tableView reloadRowsAtIndexPaths:[NSArray arrayWithObjects:[NSIndexPath indexPathForRow:3 inSection:0], nil] withRowAnimation:UITableViewRowAnimationNone];
+//    }
+//}
 
-#pragma mark ------ < KVO > ------
-- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary<NSKeyValueChangeKey,id> *)change context:(void *)context {
-    /**  < 法2 >  */
-    /**  < loading：防止滚动一直刷新，出现闪屏 >  */
-    if ([keyPath isEqualToString:@"contentSize"] && self.wkWebView.loading) {
-        CGRect webFrame = self.wkWebView.frame;
-        webFrame.size.height = self.wkWebView.scrollView.contentSize.height;
-        self.wkWebView.frame = webFrame;
-        [self.tableView reloadRowsAtIndexPaths:[NSArray arrayWithObjects:[NSIndexPath indexPathForRow:3 inSection:0], nil] withRowAnimation:UITableViewRowAnimationNone];
-    }
-}
 #pragma mark ------ < UITableViewDelegate,UITableViewDataSource > ------
 #pragma mark
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section
@@ -140,16 +141,45 @@
 
 #pragma mark ------ < WKUIDelegate,WKNavigationDelegate > ------
 #pragma mark
+/**  < 法2 >  */
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
-    /**  < 法1 >  */
-    [webView evaluateJavaScript:@"document.body.offsetHeight" completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+    //document.body.offsetHeight
+    //document.body.scrollHeight
+    //document.body.clientHeight
+    [webView evaluateJavaScript:@"document.body.scrollHeight" completionHandler:^(id _Nullable result, NSError * _Nullable error) {
        CGFloat documentHeight = [result doubleValue];
         CGRect webFrame = webView.frame;
         webFrame.size.height = documentHeight;
         webView.frame = webFrame;
         [self.tableView reloadRowsAtIndexPaths:[NSArray arrayWithObjects:[NSIndexPath indexPathForRow:3 inSection:0], nil] withRowAnimation:UITableViewRowAnimationNone];
     }];
+
+    
+//    CGRect webFrame = self.wkWebView.frame;
+//    CGFloat contentHeight = webView.scrollView.contentSize.height;
+//    webFrame.size.height = contentHeight;
+//    webView.frame = webFrame;
+//    [self.tableView reloadRowsAtIndexPaths:[NSArray arrayWithObjects:[NSIndexPath indexPathForRow:3 inSection:0], nil] withRowAnimation:UITableViewRowAnimationNone];
 }
+
+//- (void)webView:(WKWebView *)webView decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+//    if (navigationAction.navigationType == WKNavigationTypeOther) {
+//        if ([[[navigationAction.request URL] scheme] isEqualToString:@"ready"]) {
+//            float contentHeight = [[[navigationAction.request URL] host] floatValue];
+//            CGRect webFrame = self.wkWebView.frame;
+//            webFrame.size.height = contentHeight;
+//            webView.frame = webFrame;
+//            
+//            NSLog(@"onload = %f",contentHeight);
+//            
+//            [self.tableView reloadRowsAtIndexPaths:[NSArray arrayWithObjects:[NSIndexPath indexPathForRow:3 inSection:0], nil] withRowAnimation:UITableViewRowAnimationNone];
+//            
+//            decisionHandler(WKNavigationActionPolicyCancel);
+//            return;
+//        }
+//    }
+//    decisionHandler(WKNavigationActionPolicyAllow);
+//}
 
 #pragma mark ------ < getter > ------
 #pragma mark
@@ -159,13 +189,28 @@
         WKUserContentController *wkUController = [[WKUserContentController alloc] init];
         wkWebConfig.userContentController = wkUController;
         /** << 自适应屏幕宽度js > */
+        NSMutableString *JSString = [NSMutableString string];
+        
+        /** < 法3 > */
+        NSString *windowLocationString = @"<script type=\"text/javascript\">\
+        window.onload = function() {\
+        window.location.href = \"ready://\" + document.body.scrollHeight;\
+        }\
+        </script>";
+        
+        [JSString appendString:windowLocationString];
+        
         NSString *jSString = @"var meta = document.createElement('meta'); meta.setAttribute('name', 'viewport'); meta.setAttribute('content', 'width=device-width'); document.getElementsByTagName('head')[0].appendChild(meta);";
-        WKUserScript *wkUserScript = [[WKUserScript alloc] initWithSource:jSString injectionTime:WKUserScriptInjectionTimeAtDocumentEnd forMainFrameOnly:YES];
+        
+        [JSString appendString:jSString];
+        
+        
+        WKUserScript *wkUserScript = [[WKUserScript alloc] initWithSource:JSString injectionTime:WKUserScriptInjectionTimeAtDocumentEnd forMainFrameOnly:YES];
         /** << 添加js调用 > */
         [wkUController addUserScript:wkUserScript];
         _wkWebView = [[WKWebView alloc]initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 1) configuration:wkWebConfig];
-//        _wkWebView.UIDelegate = self;
-//        _wkWebView.navigationDelegate = self;
+        _wkWebView.UIDelegate = self;
+        _wkWebView.navigationDelegate = self;
         _wkWebView.opaque = NO;
         _wkWebView.scrollView.scrollEnabled = NO;
         _wkWebView.scrollView.showsVerticalScrollIndicator = NO;
